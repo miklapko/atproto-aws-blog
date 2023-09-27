@@ -1,0 +1,58 @@
+name: Run bot
+
+on:
+  # Gotta get another invite hold up
+  #schedule:
+  #  - cron: '0 */12 * * *'
+  workflow_dispatch:
+
+jobs:
+  run-container:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    
+    - name: Install jq
+      run: sudo apt update && sudo apt install jq
+
+    - name: Download timestamp from the last successful run
+      run: |
+        for i in {1..3}; do
+          RUN_ID=$(curl --silent --show-error \
+            --header "Authorization: Bearer ${{ secrets.GH_TOKEN }}" \
+            --url "https://api.github.com/repos/${{ github.repository }}/actions/workflows/bot.yaml/runs" \
+            | jq '[.workflow_runs[] | select(.conclusion == "success")][0].id')
+          
+          if [ "$RUN_ID" != "null" ]; then
+            echo "Downloading artifact from run ID $RUN_ID"
+            ARTIFACT_URL=$(curl --silent --show-error \
+              --header "Authorization: Bearer ${{ secrets.GH_TOKEN }}" \
+              --location \
+              --url "https://api.github.com/repos/${{ github.repository }}/actions/runs/$RUN_ID/artifacts" \
+              | jq -r '.artifacts[] | select(.name == "timestamp") | .archive_download_url')
+            
+            if [ "$ARTIFACT_URL" != "null" ]; then
+              curl --silent --show-error \
+                --header "Authorization: Bearer ${{ secrets.GH_TOKEN }}" \
+                --location \
+                --output timestamp.zip \
+                "$ARTIFACT_URL" && unzip -o timestamp.zip && break
+            fi
+          fi
+          
+          echo "Attempt $i failed. Retrying in 5 seconds..."
+          sleep 5 # Optional: add a delay between retries
+        done
+
+    - name: Run Docker container
+      run: |
+        touch timestamp && cat timestamp
+        docker run --env BLUE_LOGIN=${{ secrets.BLUE_LOGIN }} --env BLUE_PASSWORD=${{ secrets.BLUE_PASSWORD }} -v $(pwd)/timestamp:/timestamp calibro/aws-blog-atproto:latest
+        
+    - name: Upload timestamp
+      uses: actions/upload-artifact@v3
+      with:
+        name: timestamp
+        path: timestamp

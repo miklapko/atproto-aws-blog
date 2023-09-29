@@ -153,3 +153,12 @@ for entry in entries:
     except json.JSONDecodeError as e:
         logging.error(f"Failed to decode BlueSky post response. Error: {e}")
         continue
+
+# Write the current Unix time to the timestamp file
+try:
+    with open(timestamp_file, "w") as file:
+        file.write(str(int(time.time())))
+    logging.info(f"Successfully wrote to {timestamp_file}")
+except Exception as e:
+    logging.error(f"Failed to write to {timestamp_file}. Error: {e}")
+
